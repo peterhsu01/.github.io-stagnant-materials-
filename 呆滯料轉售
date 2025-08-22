@@ -1,0 +1,268 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>呆滯料轉售平台</title>
+<style>
+  body { font-family: Arial, sans-serif; margin:0; padding:0; background:#f9f9f9; }
+  header { background:#2d89ef; color:white; padding:1rem; text-align:center; }
+  nav a { color:white; margin:0 1rem; text-decoration:none; }
+  main { padding:2rem; }
+  h2 { color:#333; }
+  .filters { margin-bottom:1rem; display:flex; flex-wrap:wrap; gap:0.5rem; align-items:center; }
+  .filters input, .filters select { padding:0.4rem; border-radius:4px; border:1px solid #ccc; }
+  .material-list { display:flex; flex-wrap:wrap; gap:1rem; margin-bottom:2rem; }
+  .material-card { background:white; padding:1rem; border-radius:8px; width:220px; box-shadow:0 0 5px rgba(0,0,0,0.1);}
+  .material-card img { width:100%; border-radius:4px; }
+  .button { display:inline-block; padding:0.3rem 0.6rem; margin-top:0.3rem; background:#2d89ef; color:white; border:none; border-radius:4px; cursor:pointer; text-decoration:none; font-size:0.9rem; }
+  .edit-btn { background:#f0ad4e; }
+  .delete-btn { background:#d9534f; }
+  form label { display:block; margin-top:0.5rem; }
+  form input, form select { width:100%; padding:0.5rem; margin-top:0.3rem; border-radius:4px; border:1px solid #ccc; }
+  form button { margin-top:1rem; padding:0.5rem 1rem; background:#2d89ef; color:white; border:none; border-radius:4px; cursor:pointer; }
+
+  /* 響應式手機/平板優化 */
+  @media (max-width: 768px) {
+    .material-list { flex-direction: column; gap:1rem; }
+    .material-card { width: 100%; }
+    .filters { flex-direction: column; align-items: stretch; gap:0.5rem; }
+    .filters input, .filters select, .filters button { width: 100%; }
+    form label input, form label select { width: 100%; }
+    .button { font-size: 1rem; padding:0.5rem; }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>呆滯料轉售平台</h1>
+  <nav>
+    <a href="#list">物料列表</a>
+    <a href="#upload">上架物料</a>
+  </nav>
+</header>
+
+<main>
+
+<h2 id="list">最新上架物料</h2>
+
+<div class="filters">
+  <input type="text" id="searchName" placeholder="搜尋物料名稱">
+  <select id="filterUnit">
+    <option value="">所有單位</option>
+    <option>片</option>
+    <option>公斤</option>
+    <option>個</option>
+  </select>
+  <select id="sortOption">
+    <option value="">不排序</option>
+    <option value="nameAsc">名稱 A→Z</option>
+    <option value="nameDesc">名稱 Z→A</option>
+    <option value="qtyAsc">數量 由小到大</option>
+    <option value="qtyDesc">數量 由大到小</option>
+  </select>
+  <button class="button" onclick="resetFilter()">重置</button>
+</div>
+
+<div class="material-list" id="materialList"></div>
+
+<h2 id="upload">上架新物料</h2>
+<form id="uploadForm">
+  <label>物料名稱<input type="text" id="name" required></label>
+  <label>數量<input type="number" id="quantity" required></label>
+  <label>單位
+    <select id="unit">
+      <option>片</option>
+      <option>公斤</option>
+      <option>個</option>
+    </select>
+  </label>
+  <label>規格<input type="text" id="spec"></label>
+  <label>圖片上傳<input type="file" id="imgFile" accept="image/*"></label>
+  <label>聯絡方式<input type="text" id="contact" placeholder="Email 或電話"></label>
+  <button type="submit">上架物料</button>
+</form>
+
+<div id="editModal" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.5); justify-content:center; align-items:center;">
+  <div style="background:white; padding:2rem; border-radius:8px; width:300px; position:relative;">
+    <h3>編輯物料</h3>
+    <form id="editForm">
+      <label>物料名稱<input type="text" id="editName" required></label>
+      <label>數量<input type="number" id="editQuantity" required></label>
+      <label>單位
+        <select id="editUnit">
+          <option>片</option>
+          <option>公斤</option>
+          <option>個</option>
+        </select>
+      </label>
+      <label>規格<input type="text" id="editSpec"></label>
+      <label>圖片上傳<input type="file" id="editImgFile" accept="image/*"></label>
+      <label>聯絡方式<input type="text" id="editContact"></label>
+      <button type="submit" class="button">儲存修改</button>
+      <button type="button" class="button delete-btn" id="cancelEdit">取消</button>
+    </form>
+  </div>
+</div>
+
+<script>
+let materials = JSON.parse(localStorage.getItem('materials')) || [
+  {name:"鋁合金板", quantity:100, unit:"片", spec:"2mm厚", img:"https://via.placeholder.com/200x150", contact:"#"},
+  {name:"塑膠顆粒", quantity:50, unit:"公斤", spec:"透明", img:"https://via.placeholder.com/200x150", contact:"#"},
+  {name:"電子元件", quantity:15, unit:"個", spec:"電阻、電容混合", img:"https://via.placeholder.com/200x150", contact:"#"}
+];
+let filteredMaterials = [...materials];
+
+function renderMaterials(list = filteredMaterials) {
+  const materialList = document.getElementById('materialList');
+  materialList.innerHTML = '';
+  list.forEach((item, index) => {
+    const card = document.createElement('div');
+    card.className = 'material-card';
+    // 依數量高亮
+    if(item.quantity < 20){
+      card.style.backgroundColor = '#f8d7da'; // 紅色
+    } else if(item.quantity <= 50){
+      card.style.backgroundColor = '#fff3cd'; // 黃色
+    } else {
+      card.style.backgroundColor = 'white';
+    }
+    card.innerHTML = `
+      <img src="${item.img}" alt="${item.name}">
+      <h3>${item.name}</h3>
+      <p>數量: ${item.quantity} ${item.unit}</p>
+      <p>規格: ${item.spec}</p>
+      <a class="button" href="${item.contact}">聯絡/詢價</a>
+      <button class="button edit-btn" onclick="editMaterial(${index})">編輯</button>
+      <button class="button delete-btn" onclick="deleteMaterial(${index})">刪除</button>
+    `;
+    materialList.appendChild(card);
+  });
+}
+
+function deleteMaterial(index) {
+  if(confirm('確定要刪除這筆物料嗎？')) {
+    const globalIndex = materials.indexOf(filteredMaterials[index]);
+    materials.splice(globalIndex,1);
+    localStorage.setItem('materials', JSON.stringify(materials));
+    applyFilter();
+  }
+}
+
+let editIndex = null;
+function editMaterial(index) {
+  editIndex = index;
+  const item = filteredMaterials[index];
+  document.getElementById('editName').value = item.name;
+  document.getElementById('editQuantity').value = item.quantity;
+  document.getElementById('editUnit').value = item.unit;
+  document.getElementById('editSpec').value = item.spec;
+  document.getElementById('editContact').value = item.contact;
+  document.getElementById('editModal').style.display = 'flex';
+}
+
+document.getElementById('editForm').addEventListener('submit', function(e){
+  e.preventDefault();
+  const fileInput = document.getElementById('editImgFile');
+  if(fileInput.files && fileInput.files[0]){
+    const reader = new FileReader();
+    reader.onload = function(e){
+      saveEditedMaterial(e.target.result);
+    }
+    reader.readAsDataURL(fileInput.files[0]);
+  } else {
+    const currentImg = filteredMaterials[editIndex].img || 'https://via.placeholder.com/200x150';
+    saveEditedMaterial(currentImg);
+  }
+});
+
+function saveEditedMaterial(imgData){
+  const globalIndex = materials.indexOf(filteredMaterials[editIndex]);
+  materials[globalIndex] = {
+    name: document.getElementById('editName').value,
+    quantity: parseInt(document.getElementById('editQuantity').value),
+    unit: document.getElementById('editUnit').value,
+    spec: document.getElementById('editSpec').value,
+    img: imgData,
+    contact: document.getElementById('editContact').value
+  };
+  localStorage.setItem('materials', JSON.stringify(materials));
+  document.getElementById('editModal').style.display = 'none';
+  applyFilter();
+}
+
+document.getElementById('cancelEdit').addEventListener('click', function(){
+  document.getElementById('editModal').style.display = 'none';
+});
+
+document.getElementById('uploadForm').addEventListener('submit', function(e){
+  e.preventDefault();
+  const fileInput = document.getElementById('imgFile');
+  if(fileInput.files && fileInput.files[0]){
+    const reader = new FileReader();
+    reader.onload = function(e){
+      const newMaterial = {
+        name: document.getElementById('name').value,
+        quantity: parseInt(document.getElementById('quantity').value),
+        unit: document.getElementById('unit').value,
+        spec: document.getElementById('spec').value,
+        img: e.target.result,
+        contact: document.getElementById('contact').value
+      };
+      materials.push(newMaterial);
+      localStorage.setItem('materials', JSON.stringify(materials));
+      document.getElementById('uploadForm').reset();
+      applyFilter();
+      alert('物料已上架成功！');
+    }
+    reader.readAsDataURL(fileInput.files[0]);
+  } else {
+    alert('請選擇一張圖片');
+  }
+});
+
+const searchInput = document.getElementById('searchName');
+const unitSelect = document.getElementById('filterUnit');
+const sortSelect = document.getElementById('sortOption');
+
+searchInput.addEventListener('input', applyFilter);
+unitSelect.addEventListener('change', applyFilter);
+sortSelect.addEventListener('change', applyFilter);
+
+function applyFilter() {
+  const keyword = searchInput.value.trim().toLowerCase();
+  const unit = unitSelect.value;
+
+  filteredMaterials = materials.filter(item => {
+    const matchesName = item.name.toLowerCase().includes(keyword);
+    const matchesUnit = unit === "" || item.unit === unit;
+    return matchesName && matchesUnit;
+  });
+
+  const sortValue = sortSelect.value;
+  if(sortValue === "nameAsc") {
+    filteredMaterials.sort((a,b) => a.name.localeCompare(b.name));
+  } else if(sortValue === "nameDesc") {
+    filteredMaterials.sort((a,b) => b.name.localeCompare(a.name));
+  } else if(sortValue === "qtyAsc") {
+    filteredMaterials.sort((a,b) => a.quantity - b.quantity);
+  } else if(sortValue === "qtyDesc") {
+    filteredMaterials.sort((a,b) => b.quantity - a.quantity);
+  }
+
+  renderMaterials();
+}
+
+function resetFilter() {
+  searchInput.value = "";
+  unitSelect.value = "";
+  sortSelect.value = "";
+  applyFilter();
+}
+
+applyFilter();
+</script>
+
+</body>
+</html>
